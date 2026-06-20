@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CRM Hub — Dashboard</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; }
+        header { background: #1a1a2e; color: white; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
+        header h1 { font-size: 1.4rem; font-weight: 600; }
+        .badge { background: #e63946; color: white; border-radius: 12px; padding: 2px 8px; font-size: 0.75rem; margin-left: 8px; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .card { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+        .card h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: .05em; color: #666; margin-bottom: 8px; }
+        .card .number { font-size: 2.2rem; font-weight: 700; color: #1a1a2e; }
+        .card .number.warn { color: #e63946; }
+        .card .number.ok { color: #2a9d8f; }
+        .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+        .panel { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+        .panel h2 { font-size: 1rem; font-weight: 600; margin-bottom: 16px; border-bottom: 1px solid #eee; padding-bottom: 8px; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+        th { text-align: left; padding: 8px 12px; color: #666; font-weight: 500; border-bottom: 1px solid #eee; }
+        td { padding: 10px 12px; border-bottom: 1px solid #f5f5f5; }
+        tr:hover td { background: #fafafa; }
+        .status-pill { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 0.75rem; font-weight: 500; }
+        .status-ingekocht { background: #fff3cd; color: #856404; }
+        .status-in_voorbereiding { background: #cff4fc; color: #055160; }
+        .status-klaar_voor_verkoop { background: #d1e7dd; color: #0a3622; }
+        .status-verkocht { background: #d3d3d3; color: #555; }
+        .status-inruil { background: #e2d9f3; color: #432874; }
+        .prio-urgent { color: #e63946; font-weight: 600; }
+        .prio-hoog { color: #f4a261; }
+        .prio-normaal { color: #2a9d8f; }
+        .sync-btn { background: #1a1a2e; color: white; border: none; border-radius: 6px; padding: 8px 16px; cursor: pointer; font-size: 0.875rem; }
+        .sync-btn:hover { background: #2d2d44; }
+        .sync-status { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+        .sync-item { font-size: 0.8rem; }
+        .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+        .dot-ok { background: #2a9d8f; }
+        .dot-err { background: #e63946; }
+        .dot-pending { background: #f4a261; }
+        @media (max-width: 768px) { .row { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+<header>
+    <h1>🚗 CRM Hub <span style="font-weight:300;font-size:.9rem">— Integratie-dashboard</span></h1>
+    <div class="sync-status" id="syncStatus">
+        <span class="sync-item"><span class="dot dot-pending"></span>VWE</span>
+        <span class="sync-item"><span class="dot dot-pending"></span>Gaston</span>
+        <span class="sync-item"><span class="dot dot-pending"></span>SAM</span>
+        <button class="sync-btn" onclick="syncAll()">↻ Sync alle</button>
+    </div>
+</header>
+
+<div class="container">
+    <!-- Stats -->
+    <div class="grid" id="statsGrid">
+        <div class="card"><h3>Ingekocht</h3><div class="number" id="stat-ingekocht">—</div></div>
+        <div class="card"><h3>In voorbereiding</h3><div class="number" id="stat-in_voorbereiding">—</div></div>
+        <div class="card"><h3>Klaar voor verkoop</h3><div class="number ok" id="stat-klaar_voor_verkoop">—</div></div>
+        <div class="card"><h3>Inruil / taxatie</h3><div class="number" id="stat-inruil">—</div></div>
+        <div class="card"><h3>Ongelezen signalen</h3><div class="number warn" id="stat-notifs">—</div></div>
+    </div>
+
+    <div class="row">
+        <!-- Voertuigen -->
+        <div class="panel">
+            <h2>Voertuigen — voorraad</h2>
+            <table>
+                <thead>
+                    <tr><th>Kenteken</th><th>Voertuig</th><th>Status</th><th>KM</th></tr>
+                </thead>
+                <tbody id="vehicleTable"><tr><td colspan="4" style="color:#aaa">Laden...</td></tr></tbody>
+            </table>
+        </div>
+
+        <!-- Signaleringen -->
+        <div class="panel">
+            <h2>Signaleringen <span class="badge" id="notifBadge">0</span></h2>
+            <table>
+                <thead>
+                    <tr><th>Prioriteit</th><th>Melding</th><th></th></tr>
+                </thead>
+                <tbody id="notifTable"><tr><td colspan="3" style="color:#aaa">Laden...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Werkorders -->
+        <div class="panel">
+            <h2>Open werkorders</h2>
+            <table>
+                <thead>
+                    <tr><th>Nummer</th><th>Type</th><th>Status</th><th>Monteur</th></tr>
+                </thead>
+                <tbody id="woTable"><tr><td colspan="4" style="color:#aaa">Laden...</td></tr></tbody>
+            </table>
+        </div>
+
+        <!-- Sync log -->
+        <div class="panel">
+            <h2>Sync-historie</h2>
+            <table>
+                <thead>
+                    <tr><th>Systeem</th><th>Status</th><th>Verwerkt</th><th>Tijd</th></tr>
+                </thead>
+                <tbody id="syncTable"><tr><td colspan="4" style="color:#aaa">Laden...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+async function api(path) {
+    try {
+        const r = await fetch('/api' + path);
+        return await r.json();
+    } catch(e) { return null; }
+}
+
+async function loadStats() {
+    const stats = await api('/vehicles/stats');
+    if (!stats) return;
+    ['ingekocht','in_voorbereiding','klaar_voor_verkoop','inruil'].forEach(s => {
+        const el = document.getElementById('stat-' + s);
+        if (el) el.textContent = stats[s] || 0;
+    });
+    const notifs = await api('/notifications/unread-count');
+    if (notifs) {
+        document.getElementById('stat-notifs').textContent = notifs.count;
+        document.getElementById('notifBadge').textContent = notifs.count;
+    }
+}
+
+async function loadVehicles() {
+    const vehicles = await api('/vehicles/?limit=20');
+    if (!vehicles) return;
+    const tbody = document.getElementById('vehicleTable');
+    tbody.innerHTML = vehicles.map(v => `
+        <tr>
+            <td><strong>${v.license_plate || '—'}</strong></td>
+            <td>${[v.make, v.model].filter(Boolean).join(' ') || '—'}</td>
+            <td><span class="status-pill status-${v.status}">${v.status.replace(/_/g,' ')}</span></td>
+            <td>${v.mileage ? v.mileage.toLocaleString('nl-NL') + ' km' : '—'}</td>
+        </tr>
+    `).join('') || '<tr><td colspan="4" style="color:#aaa">Geen voertuigen</td></tr>';
+}
+
+async function loadNotifications() {
+    const notifs = await api('/notifications/?unread_only=true&limit=15');
+    if (!notifs) return;
+    const tbody = document.getElementById('notifTable');
+    tbody.innerHTML = notifs.map(n => `
+        <tr>
+            <td class="prio-${n.priority}">${n.priority}</td>
+            <td>${n.title}</td>
+            <td><button onclick="markRead(${n.id})" style="border:none;background:none;cursor:pointer;color:#aaa">✓</button></td>
+        </tr>
+    `).join('') || '<tr><td colspan="3" style="color:#aaa">Geen signaleringen</td></tr>';
+}
+
+async function markRead(id) {
+    await fetch('/api/notifications/' + id + '/read', {method:'PATCH'});
+    loadNotifications();
+    loadStats();
+}
+
+async function loadWorkOrders() {
+    const orders = await api('/work-orders/?limit=15');
+    if (!orders) return;
+    const tbody = document.getElementById('woTable');
+    tbody.innerHTML = orders.map(wo => `
+        <tr>
+            <td>${wo.order_number}</td>
+            <td>${wo.order_type.replace(/_/g,' ')}</td>
+            <td><span class="status-pill status-ingekocht">${wo.status.replace(/_/g,' ')}</span></td>
+            <td>${wo.mechanic || '—'}</td>
+        </tr>
+    `).join('') || '<tr><td colspan="4" style="color:#aaa">Geen werkorders</td></tr>';
+}
+
+async function loadSyncLogs() {
+    const logs = await api('/sync/logs?limit=10');
+    if (!logs) return;
+    const tbody = document.getElementById('syncTable');
+    tbody.innerHTML = logs.map(l => `
+        <tr>
+            <td><strong>${l.source.toUpperCase()}</strong></td>
+            <td>${l.status}</td>
+            <td>${l.records_created + l.records_updated}</td>
+            <td style="font-size:.75rem;color:#999">${new Date(l.started_at).toLocaleString('nl-NL')}</td>
+        </tr>
+    `).join('') || '<tr><td colspan="4" style="color:#aaa">Geen logs</td></tr>';
+}
+
+async function syncAll() {
+    await fetch('/api/sync/all', {method:'POST'});
+    setTimeout(() => { loadStats(); loadSyncLogs(); }, 3000);
+}
+
+// Initieel laden
+loadStats();
+loadVehicles();
+loadNotifications();
+loadWorkOrders();
+loadSyncLogs();
+
+// Ververs elke 60 seconden
+setInterval(() => {
+    loadStats();
+    loadNotifications();
+    loadSyncLogs();
+}, 60000);
+</script>
+</body>
+</html>
