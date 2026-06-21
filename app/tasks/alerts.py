@@ -13,6 +13,7 @@ from app.models.vehicle import VehicleStatus
 from app.models.work_order import WorkOrderStatus
 from app.models.appointment import AppointmentStatus
 from app.models.notification import NotificationType, NotificationPriority
+from app.models.checklist import ChecklistItemStatus
 
 
 def _now():
@@ -132,12 +133,16 @@ async def _check_incomplete_checklists(db: AsyncSession):
     checklists = result.scalars().all()
 
     for cl in checklists:
+        await db.refresh(cl, ["items"])
         if not await _notification_exists(db, NotificationType.CHECKLIST_NIET_COMPLEET, cl.vehicle_id):
+            rejected = cl.rejected_count
+            priority = NotificationPriority.HOOG if rejected > 0 else NotificationPriority.NORMAAL
+            extra = f" ({rejected} afgekeurde punt{'en' if rejected != 1 else ''})" if rejected else ""
             db.add(Notification(
                 notification_type=NotificationType.CHECKLIST_NIET_COMPLEET,
-                priority=NotificationPriority.NORMAAL,
+                priority=priority,
                 title=f"Checklist niet compleet: {cl.title}",
-                message=f"Checklist '{cl.title}' is al meer dan 3 dagen niet afgerond.",
+                message=f"Checklist '{cl.title}' is al meer dan 3 dagen niet afgerond{extra}.",
                 vehicle_id=cl.vehicle_id,
             ))
 
