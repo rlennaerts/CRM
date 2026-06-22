@@ -6,7 +6,7 @@ Centrale hub die mijn.vwe, Gaston, SAM en het werkplaatsplanbord met elkaar verb
 
 ```
 mijn.vwe (bot)  ──┐
-Gaston (export) ──┤──▶  CRM Hub (FastAPI + PostgreSQL)  ──▶  Dashboard
+Gaston (export) ──┤──▶  CRM Hub (FastAPI + SQLite)  ──▶  Dashboard
 SAM (export)    ──┘
 ```
 
@@ -23,67 +23,84 @@ SAM (export)    ──┘
 | **Dashboard** | Realtime overzicht van voorraad, werkorders en signaleringen |
 | **Taakplanner** | Automatische sync elke 15–30 minuten |
 
-## Installatie
+---
 
-### 1. Omgevingsbestand aanmaken
+## Installatie op Windows (geen Docker nodig)
 
-```bash
-cp .env.example .env
-# Vul .env in met je gegevens
-```
+### Vereisten
 
-### 2. Opstarten met Docker
+- **Python 3.11 of hoger** — download via https://python.org  
+  *(vink bij installatie "Add Python to PATH" aan)*
 
-```bash
-docker compose up -d
-```
+### Stap 1: Eenmalige installatie
 
-Het dashboard is bereikbaar op http://localhost:8000
-
-### 3. Of lokaal draaien
-
-```bash
-# PostgreSQL en Redis moeten lokaal draaien
-pip install -r requirements.txt
-playwright install chromium
-uvicorn app.main:app --reload
-```
-
-## Gaston & SAM exports verwerken
-
-Plaats geëxporteerde bestanden in de geconfigureerde mappen:
+Dubbelklik op `setup.bat` of voer uit in een opdrachtprompt:
 
 ```
-/data/imports/gaston/  → werkorders*.csv, afspraken*.csv, klanten*.csv
-/data/imports/sam/     → voorraad*.csv, verkoop*.csv, klanten*.csv
+setup.bat
 ```
 
-De sync pikt ze automatisch op. Of start handmatig via:
-- `POST /api/sync/gaston`
-- `POST /api/sync/sam`
-- `POST /api/sync/vwe`
-- `POST /api/sync/all`
+Dit doet automatisch:
+- Virtualenv aanmaken
+- Alle packages installeren
+- Chromium downloaden (voor VWE-koppeling)
+- Import-mappen aanmaken (`imports\gaston`, `imports\sam`)
+- `.env` aanmaken met standaardwaarden
 
-## VWE koppeling
+### Stap 2: Inloggegevens invullen
 
-De VWE-connector gebruikt Playwright om mijn.vwe.nl te bedienen.
-Stel in `.env` in:
+Open `.env` in Kladblok en vul in:
+
 ```
 VWE_USERNAME=jouw@email.nl
 VWE_PASSWORD=jouwwachtwoord
 ```
 
-> **Let op**: De precieze CSS-selectors in `app/connectors/vwe.py` moeten afgestemd
-> worden op de huidige VWE-pagina-structuur. Gebruik de `screenshot_for_debug()`
-> methode om te inspecteren wat de bot ziet.
+### Stap 3: Starten
 
-## API-documentatie
+Dubbelklik op `start.bat`
 
-Na opstarten beschikbaar op: http://localhost:8000/docs
+Het dashboard is bereikbaar op: **http://localhost:8000**  
+API-documentatie: **http://localhost:8000/docs**
+
+---
+
+## Gaston & SAM exports verwerken
+
+Plaats geëxporteerde bestanden in:
+
+```
+imports\gaston\  → werkorders*.csv, afspraken*.csv, klanten*.csv
+imports\sam\     → voorraad*.csv, verkoop*.csv, klanten*.csv
+```
+
+De sync pikt ze automatisch op. Of start handmatig via het dashboard of:
+- `POST /api/sync/gaston`
+- `POST /api/sync/sam`
+- `POST /api/sync/vwe`
+- `POST /api/sync/all`
+
+---
+
+## Upgrade naar PostgreSQL (later)
+
+Wanneer je root/server-toegang hebt en PostgreSQL wilt gebruiken, pas je `.env` aan:
+
+```
+DATABASE_URL=postgresql+asyncpg://user:wachtwoord@localhost:5432/crm_hub
+```
+
+En installeer de extra driver:
+```
+pip install asyncpg psycopg2-binary
+```
+
+De Docker Compose configuratie (`docker-compose.yml`) staat klaar voor die situatie.
+
+---
 
 ## Kolomnamen aanpassen
 
-Gaston en SAM exporteren soms in andere kolomnamen. De connectors proberen
-automatisch te matchen op aliassen. Pas de `col_map` dictionaries aan in:
+Gaston en SAM exporteren soms in andere kolomnamen. Pas de `col_map` dictionaries aan in:
 - `app/connectors/gaston.py`
 - `app/connectors/sam.py`

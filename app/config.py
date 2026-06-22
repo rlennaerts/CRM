@@ -3,8 +3,7 @@ from typing import Optional
 
 
 class Settings(BaseSettings):
-    database_url: str = "postgresql+asyncpg://user:password@localhost:5432/crm_hub"
-    redis_url: str = "redis://localhost:6379/0"
+    database_url: str = "sqlite+aiosqlite:///crm_hub.db"
     secret_key: str = "change-me"
     app_env: str = "development"
 
@@ -12,14 +11,17 @@ class Settings(BaseSettings):
     vwe_username: str = ""
     vwe_password: str = ""
 
-    gaston_export_dir: str = "/data/imports/gaston"
-    sam_export_dir: str = "/data/imports/sam"
+    gaston_export_dir: str = "imports/gaston"
+    sam_export_dir: str = "imports/sam"
 
     smtp_host: Optional[str] = None
     smtp_port: int = 587
     smtp_user: Optional[str] = None
     smtp_password: Optional[str] = None
     notify_email: Optional[str] = None
+
+    host: str = "127.0.0.1"
+    port: int = 8000
 
     vwe_sync_interval: int = 30
     gaston_sync_interval: int = 15
