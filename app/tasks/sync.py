@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors.gaston import GastonConnector, GastonWorkOrder, GastonCustomer, GastonAppointment
 from app.connectors.sam import SamConnector, SamVehicle, SamCustomer, SamSale
-from app.connectors.vwe import VweConnector, VweVehicle, VweCustomer
+from app.connectors.vwe import VweConnector, VweVehicle
 from app.models import Customer, Vehicle, WorkOrder, Appointment, SyncLog, Notification
 from app.models.sync_log import SyncSource, SyncStatus
 from app.models.vehicle import VehicleStatus
@@ -221,21 +221,37 @@ async def _upsert_vehicle_from_sam(db: AsyncSession, raw: SamVehicle) -> Vehicle
 
 
 async def _upsert_vehicle_from_vwe(db: AsyncSession, raw: VweVehicle) -> Vehicle:
+    """
+    Voertuig upsert vanuit VWE advertentiedata.
+
+    Volgorde van matching (meest specifiek naar minst):
+    1. vwe_id (= advertentie-ID)
+    2. kenteken
+    3. VIN
+    """
     result = await db.execute(select(Vehicle).where(Vehicle.vwe_id == raw.vwe_id))
     vehicle = result.scalar_one_or_none()
 
-    if not vehicle:
-        if raw.license_plate:
-            r2 = await db.execute(select(Vehicle).where(Vehicle.license_plate == raw.license_plate))
-            vehicle = r2.scalar_one_or_none()
+    if not vehicle and raw.license_plate:
+        lp_clean = re.sub(r"[^A-Z0-9]", "", raw.license_plate.upper())
+        r2 = await db.execute(select(Vehicle).where(Vehicle.license_plate == lp_clean))
+        vehicle = r2.scalar_one_or_none()
 
-    if not vehicle:
+    if not vehicle and raw.vin:
+        r3 = await db.execute(select(Vehicle).where(Vehicle.vin == raw.vin))
+        vehicle = r3.scalar_one_or_none()
+
+    is_new = vehicle is None
+    if is_new:
         vehicle = Vehicle(vwe_id=raw.vwe_id)
         db.add(vehicle)
     else:
         vehicle.vwe_id = raw.vwe_id
 
-    vehicle.license_plate = raw.license_plate or vehicle.license_plate
+    # Kenteken normaliseren (VWE geeft soms "XX-123-Y", soms "XX123Y")
+    if raw.license_plate:
+        vehicle.license_plate = re.sub(r"[^A-Z0-9]", "", raw.license_plate.upper()) or vehicle.license_plate
+
     vehicle.vin = raw.vin or vehicle.vin
     vehicle.make = raw.make or vehicle.make
     vehicle.model = raw.model or vehicle.model
@@ -245,6 +261,31 @@ async def _upsert_vehicle_from_vwe(db: AsyncSession, raw: VweVehicle) -> Vehicle
     vehicle.fuel_type = raw.fuel_type or vehicle.fuel_type
     vehicle.apk_expiry = raw.apk_expiry or vehicle.apk_expiry
     vehicle.asking_price = raw.asking_price or vehicle.asking_price
+
+    # Status: als VWE "Verlopen" meldt → voertuig is waarschijnlijk verkocht
+    if raw.status:
+        status_lower = raw.status.lower()
+        if "verlopen" in status_lower or "verkocht" in status_lower:
+            vehicle.status = VehicleStatus.VERKOCHT
+        elif "actief" in status_lower and vehicle.status == VehicleStatus.INGEKOCHT:
+            vehicle.status = VehicleStatus.KLAAR_VOOR_VERKOOP
+
+    # APK-waarschuwing bij bijna verlopen
+    if raw.apk_expiry:
+        from datetime import date, timedelta
+        today = date.today()
+        if raw.apk_expiry < today + timedelta(days=30):
+            notif = Notification(
+                notification_type=NotificationType.APK_BIJNA_VERLOPEN,
+                priority=NotificationPriority.HOOG,
+                title=f"APK bijna verlopen — {raw.license_plate}",
+                message=(
+                    f"VWE meldt: APK van {raw.make or ''} {raw.model or ''} "
+                    f"({raw.license_plate}) verloopt op {raw.apk_expiry}."
+                ),
+                vehicle_id=vehicle.id if vehicle.id else None,
+            )
+            db.add(notif)
 
     await db.flush()
     return vehicle
@@ -442,6 +483,14 @@ async def sync_sam(db: AsyncSession) -> SyncLog:
 
 
 async def sync_vwe(db: AsyncSession) -> SyncLog:
+    """
+    Synchroniseert alle actieve VWE-advertenties naar de centrale database.
+
+    Gebruikt VweConnector.sync_all_vehicles() die:
+    1. De advertentielijst ophaalt via de Angular scope van /services/adv/list
+    2. Per advertentie de vehicleinfo-pagina opent en velden leest
+    3. De aangevinkte opties ophaalt van de accessories-pagina
+    """
     log = SyncLog(
         source=SyncSource.VWE,
         status=SyncStatus.GESTART,
@@ -455,32 +504,16 @@ async def sync_vwe(db: AsyncSession) -> SyncLog:
     try:
         async with VweConnector() as vwe:
             if not await vwe.login():
-                raise RuntimeError("VWE login mislukt")
+                raise RuntimeError("VWE login mislukt — controleer VWE_USERNAME/VWE_PASSWORD in .env")
 
-            for raw_vehicle in await vwe.fetch_vehicles():
+            vehicles = await vwe.sync_all_vehicles()
+
+            for raw_vehicle in vehicles:
                 try:
                     await _upsert_vehicle_from_vwe(db, raw_vehicle)
                     created += 1
                 except Exception as e:
                     logger.error(f"VWE voertuig {raw_vehicle.vwe_id}: {e}")
-                    failed += 1
-
-            for raw_customer in await vwe.fetch_customers():
-                try:
-                    # Maak klant aan als VWE ID nog niet bestaat
-                    result = await db.execute(select(Customer).where(Customer.vwe_id == raw_customer.vwe_id))
-                    customer = result.scalar_one_or_none()
-                    if not customer:
-                        customer = Customer(
-                            vwe_id=raw_customer.vwe_id,
-                            first_name=raw_customer.first_name,
-                            last_name=raw_customer.last_name,
-                            email=raw_customer.email,
-                        )
-                        db.add(customer)
-                    created += 1
-                except Exception as e:
-                    logger.error(f"VWE klant {raw_customer.vwe_id}: {e}")
                     failed += 1
 
         log.status = SyncStatus.SUCCES if failed == 0 else SyncStatus.GEDEELTELIJK
@@ -489,6 +522,15 @@ async def sync_vwe(db: AsyncSession) -> SyncLog:
         log.status = SyncStatus.FOUT
         log.error_message = str(e)
         logger.error(f"VWE sync mislukt: {e}")
+
+        # Notificatie aanmaken bij sync-fout
+        notif = Notification(
+            notification_type=NotificationType.SYNC_FOUT,
+            priority=NotificationPriority.HOOG,
+            title="VWE synchronisatie mislukt",
+            message=f"VWE sync mislukt: {str(e)[:200]}",
+        )
+        db.add(notif)
 
     log.finished_at = _now()
     log.records_created = created
