@@ -6,6 +6,7 @@ from app.models.appointment import Appointment
 from app.models.checklist import Checklist, ChecklistItem
 from app.models.notification import Notification
 from app.models.sync_log import SyncLog
+from app.models.portal_record import PortalRecord
 
 __all__ = [
     "Base",
@@ -17,4 +18,5 @@ __all__ = [
     "ChecklistItem",
     "Notification",
     "SyncLog",
+    "PortalRecord",
 ]

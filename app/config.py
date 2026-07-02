@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     gaston_sync_interval: int = 15
     sam_sync_interval: int = 15
 
+    # Toegestane origins voor de Sales Portal (komma-gescheiden).
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173"
+
     class Config:
         env_file = ".env"
 
